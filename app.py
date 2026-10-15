@@ -61,7 +61,7 @@ FORM_HTML = """
   {% if success %}
   <div class="success">Posted! It is now live on the <a href="https://onedine-preview.netlify.app/blog/">preview site</a> for review.</div>
   {% endif %}
-  <form method="POST">
+  <form method="POST" enctype="multipart/form-data">
     <label for="title">Title</label>
     <input type="text" id="title" name="title" required placeholder="Your headline">
 
@@ -83,6 +83,10 @@ FORM_HTML = """
     <label for="body">Your post</label>
     <textarea id="body" name="body" required placeholder="Write your piece here. Blank lines separate paragraphs."></textarea>
     <p class="hint">Plain text is fine. Use blank lines between paragraphs.</p>
+
+    <label for="image">Hero image (optional)</label>
+    <input type="file" id="image" name="image" accept="image/*">
+    <p class="hint">Upload a header image for your post. Shows at the top of the article.</p>
 
     <button type="submit">Publish to Preview</button>
   </form>
@@ -111,6 +115,19 @@ def index():
         if author not in AUTHORS:
             return "Invalid author", 400
 
+        # Handle image upload
+        hero_image = None
+        if "image" in request.files:
+            f = request.files["image"]
+            if f and f.filename:
+                ext = os.path.splitext(f.filename)[1].lower()
+                if ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+                    safe_name = f"{slugify(title)}{ext}"
+                    upload_dir = os.path.join(os.path.dirname(__file__), "uploads")
+                    os.makedirs(upload_dir, exist_ok=True)
+                    f.save(os.path.join(upload_dir, safe_name))
+                    hero_image = safe_name
+
         subs = load_submissions()
         subs.append({
             "title": title,
@@ -118,6 +135,7 @@ def index():
             "excerpt": excerpt,
             "body": body,
             "go_live": go_live,
+            "hero_image": hero_image,
             "submitted_at": date.today().isoformat(),
             "published": False,
         })
@@ -148,6 +166,14 @@ def ack():
             s["published"] = True
     save_submissions(subs)
     return jsonify({"ok": True})
+
+
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    """Serve uploaded hero images for the publisher to fetch."""
+    from flask import send_from_directory
+    upload_dir = os.path.join(os.path.dirname(__file__), "uploads")
+    return send_from_directory(upload_dir, filename)
 
 
 if __name__ == "__main__":
